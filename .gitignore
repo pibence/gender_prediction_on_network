@@ -3,6 +3,6 @@
 __pycache__
 data/soc-pokec-profiles.txt
 data/soc-pokec-profiles.txt.gz
-data\soc-pokec-relationships.txt
-data\soc-pokec-relationships.txt.gz
+data/soc-pokec-relationships.txt
+data/soc-pokec-relationships.txt.gz
 test*.ipynb
