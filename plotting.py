@@ -6,6 +6,8 @@ import networkx as nx
 import logging
 logging.basicConfig(level=logging.INFO)
 
+GENDER_MAP = {0:'female', 1:'male'}
+
 
 def creating_plot_df(graph) -> pd.DataFrame:
     '''
@@ -96,8 +98,6 @@ def plot_graph_features(graph, feature):
         ax.set_xlabel('frequency (log)', size=14)
         ax.set_title('Degree distribution on a log-log scale', size=18)
         ax.tick_params(labelsize=12)
-        
-        return fig
 
     elif feature == 'agedist':
 
@@ -109,8 +109,6 @@ def plot_graph_features(graph, feature):
         ax.set_ylabel('Count', size=14)
         ax.set_xlabel('age', size=14)
         ax.set_title('Age distribution for men and women', size=18)
-
-        return fig
 
     elif feature == 'descriptive':
 
@@ -135,19 +133,28 @@ def plot_graph_features(graph, feature):
             axes.reshape(-1)[i].tick_params(labelsize=12)
             axes.reshape(-1)[i].legend(set(grouped_df.gender.replace({0:'female', 1:'male'})), fontsize=12)
 
-        return fig
+    
+def extending_edgelist(nodes, edgelist):
+    '''
+    This function takes the nodes df and edgelist df as input and returns
+    an extended version of the edgelist df with the node info joined on it. 
+    '''
+
+    edgelist_extended = edgelist.join(nodes.set_index('user_id'), on='source').rename(columns={'age': 'age_1', 'gender': 'gender_1'})
+    edgelist_extended = edgelist_extended.join(nodes.set_index('user_id'), on='target').rename(columns={'age': 'age_2', 'gender': 'gender_2'})
+
+    return(edgelist_extended)
 
 
 def plot_heatmap_demog_dist(nodes, edgelist):
     '''
     This function plots the demographic distribution of friends.
     TODO update description
-    TODO make gender map global'''
+    '''
 
 
     # using edgelist and joining relevant data on it
-    edgelist_extended = edgelist.join(nodes.set_index('user_id'), on='source').rename(columns={'age': 'age_1', 'gender': 'gender_1'})
-    edgelist_extended = edgelist_extended.join(nodes.set_index('user_id'), on='target').rename(columns={'age': 'age_2', 'gender': 'gender_2'})
+    edgelist_extended = extending_edgelist(nodes, edgelist)
 
     # setting male's age to negative
     edgelist_v2 = edgelist_extended.copy(deep=True)
@@ -155,21 +162,106 @@ def plot_heatmap_demog_dist(nodes, edgelist):
     
     # creating plot
     fig, axes = plt.subplots(1, 2, figsize=(16,8))
-    gender_map = {0:'female', 1:'male'}
 
-    for i, gender in enumerate(gender_map.keys()):
+    for i, gender in enumerate(GENDER_MAP.keys()):
         # filtering for the given gender
         df = edgelist_v2[edgelist_v2.gender_1 ==gender]
         # creating gouped dataframe with counts of relations
         grouped_df = df.groupby(['age_1', 'gender_1', 'age_2', 'gender_2']).count()
         # creating pivot table from grouped df to show the ages on the two axes,
         # the count is the vaule.
-        pivot_1 = grouped_df.pivot_table(index="age_2", columns="age_1", values="source").fillna(0)
+        pivot_1 = grouped_df.pivot_table(index="age_2", columns="age_1", values="source", aggfunc=np.sum).fillna(0)
         # normalizing pivot table by sums in columns
         pivot_2 = pivot_1.apply(lambda x: x/x.sum())
         # plotting
         sns.heatmap(pivot_2, ax=axes[i], cmap='Spectral_r')
         axes[i].invert_yaxis()
         axes[i].set_ylabel('Demographic distribution of friends', size=14)
-        axes[i].set_xlabel(f'age ({gender_map[gender])}', size=14)
+        axes[i].set_xlabel(f'age ({GENDER_MAP[gender]})', size=14)
         fig.suptitle('Age distribution of friends among men and women', size = 18)
+
+
+def filtering_edgelist(edgelist, column1, column2, filter1, filter2):
+    '''
+    This function is used to filter the edgelist into the desired outcome.
+    '''
+
+    edgelist_filtered = edgelist[(edgelist[column1] == filter1) & (edgelist[column2] == filter2)]
+
+    return(edgelist_filtered)
+
+
+def age_group_proportion(pivot):
+    '''
+    This function takes a pivot-table as input and calculates the proportion 
+    of friends from the following age groups for each year that users have.
+    * [user's age -5 years, user's age +5 years]
+    * [user's age +20 years, user's age +30 years]
+    * [user's age -30 years, user's age -20 years].
+    '''
+    # initializing empty dictionaries
+    count_5 = {}
+    count_upper_20 = {}
+    count_bottom_20 = {}
+
+    # iterating through all ages in the pivot table and summing up the number of
+    # friends in the years that fall in the desired range then dividing it by the
+    # total number of friends for the given age.
+    for age in pivot.index:
+        count_5[age] = sum(pivot.loc[age, age-5:age+5]) / pivot.loc[age].sum()
+        count_upper_20[age] = sum(pivot.loc[age, age+20:age+30]) / pivot.loc[age].sum()
+        count_bottom_20[age] = sum(pivot.loc[age, age-30:age-20]) / pivot.loc[age].sum()
+    
+    # creating dataframe from the calculated dictionaries
+    ret = pd.DataFrame([count_5, count_upper_20, count_bottom_20]).T
+    ret = ret.rename(columns={0:'x-5;x+5', 1: 'x+20;x+30', 2: 'x-30;x-20'})
+
+    return(ret)
+
+
+def plot_age_group_proportion(nodes, edgelist):
+    '''
+    This function plots the different age groups of friends for male and female
+    users on two sublots side by side. The age groups examined are the following:
+    * [user's age -5 years, user's age +5 years]
+    * [user's age +20 years, user's age +30 years]
+    * [user's age -30 years, user's age -20 years].
+    '''
+
+    # getting extended edgelist
+    edgelist_extended = extending_edgelist(nodes, edgelist)
+
+    # dictionary of names and gender combination for dataframes
+    df_info ={'mm': [1, 1], 'mf': [1, 0], 'fm': [0, 1], 'ff': [0, 0]}
+
+    # creating dictionary of grouped dataframes for male-male, female-female, 
+    # male-female female-male relations.
+    filtered_dfs = {name: filtering_edgelist(edgelist_extended, 'gender_1', 'gender_2', gender[0], gender[1]) for name, gender in df_info.items()}
+
+    # creating dictionary from grouping dataframes and returning the count of each group
+    grouped_dfs = {name:filtered_dfs[name].groupby(['age_1', 'age_2']).count()[['source']] for name in df_info.keys()}
+
+    # creating dictionary of pivot-tables from the grouped dataframes
+    pivoted_dfs = {name: grouped_dfs[name].pivot_table(index="age_1", columns="age_2", values="source", aggfunc=np.sum).fillna(0) for name in df_info.keys()}
+
+    # calculating proportion of different age groups of friends for users
+    # and combining the dataframes to dictionaries
+    result_dfs = {name: age_group_proportion(pivoted_dfs[name]) for name in df_info.keys()}
+
+    # combining the necessary dataframes together and plotting them
+    plot_df_male = result_dfs['mm'].rename(columns={'x-5;x+5':'M x-5;x+5', 'x+20;x+30': 'M x+20;x+30', 'x-30;x-20': 'M x-30;x-20'}) \
+    .join(result_dfs['mf'].rename(columns={'x-5;x+5':'F(x-5;x+5)', 'x+20;x+30': 'F(x+20;x+30)', 'x-30;x-20': 'F(x-30;x-20)'}))
+
+    plot_df_female = result_dfs['fm'].rename(columns={'x-5;x+5':'M x-5;x+5', 'x+20;x+30': 'M x+20;x+30', 'x-30;x-20': 'M x-30;x-20'}) \
+    .join(result_dfs['ff'].rename(columns={'x-5;x+5':'F(x-5;x+5)', 'x+20;x+30': 'F(x+20;x+30)', 'x-30;x-20': 'F(x-30;x-20)'}))
+    
+    plot_dfs = {'male': plot_df_male, 'female': plot_df_female}
+
+    fig, axes = plt.subplots(1,2, figsize=(16,6))
+    for i, gender in enumerate(GENDER_MAP.values()):
+        axes[i].plot(plot_dfs[gender])
+        axes[i].legend(plot_dfs[gender].columns, fontsize=12)
+        axes[i].set_ylabel('Proportion', size=14)
+        axes[i].set_xlabel(f'Age of {gender} user', size=14)
+        fig.suptitle('Proportion of friends age', size = 24)
+
