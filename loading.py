@@ -143,4 +143,15 @@ def load_data(edgelist_path, node_path):
 Number of edges in the graph: {len(edgelist_public)}")
 
     return nodes, edgelist_public
-    
+
+
+def load_data_from_csv(edgelist_path, node_path):
+    '''This function loads the data from the csv files.'''
+
+    nodes = pd.read_csv(node_path)
+    edgelist = pd.read_csv(edgelist_path)
+
+    print(f"Number of nodes in the graph: {len(nodes)}\n\
+Number of edges in the graph: {len(edgelist)}")
+
+    return nodes, edgelist

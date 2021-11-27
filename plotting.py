@@ -80,7 +80,6 @@ def plot_graph_features(graph:nx.Graph, feature:str):
     age~neighbor connectivity, age~triadic_closure, age~embeddedness.
     '''
 
-    # TODO add layout feature to avoid overlapping in 4 subplots
     # getting node_df
     plot_df = creating_node_df(graph)
 
@@ -131,7 +130,8 @@ def plot_graph_features(graph:nx.Graph, feature:str):
             axes.reshape(-1)[i].set_title(f'Average {subplot} over the ages', size=18)
             axes.reshape(-1)[i].tick_params(labelsize=12)
             axes.reshape(-1)[i].legend(set(grouped_df.gender.replace(GENDER_MAP)), fontsize=12)
-
+        
+        fig.tight_layout()
     
 def extending_edgelist(nodes:pd.DataFrame, edgelist:pd.DataFrame) -> pd.DataFrame:
     '''
