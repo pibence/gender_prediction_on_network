@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 import numpy as np
 import networkx as nx
+import logging
+logging.basicConfig(level=logging.INFO)
 
 
 def creating_plot_df(graph) -> pd.DataFrame:
@@ -9,6 +12,7 @@ def creating_plot_df(graph) -> pd.DataFrame:
     This function takes the graph as input and returns a dataframe
     containing infomration on the nodes such as degree, age, gender.
     '''
+    # TODO rename plot_df to node_df
     plot_df = pd.DataFrame(dict(
         degree = dict(graph.degree()),
         age =dict(nx.get_node_attributes(graph, 'age')),
@@ -26,24 +30,14 @@ def creating_extended_df_plot(plot_df, graph):
     The reason for separation is the high calculation time.
     It returns the extended dataframe for plotting.
     '''
+    # TODO rename plot_df to node_df
 
     # adding user_id column to plot_df dataframe
     plot_df = plot_df.reset_index().rename(columns={'index':'user_id'})
 
     # defining functions to be applied on the dataframe. They are using
-    # the plot_df as given inside the function as that is the df the function
+    # the graph given inside the function as that is the df the function
     # is called on.
-    def avg_neighbors_degree(df):
-        '''
-        The only goal of this function is to be called in an apply structure
-        on the plot_df dataframe. It calculates the avg degree of the neighbors.
-        '''
-        # listing neighbors for each node
-        neighbors = set(graph.neighbors(df['user_id']))
-        # calculating the average degree of the node's neighbors
-        avg_degree = plot_df[plot_df['user_id'].isin(neighbors)].degree.mean()
-
-        return avg_degree
 
     def embeddedness(df):
         '''
@@ -64,9 +58,12 @@ def creating_extended_df_plot(plot_df, graph):
 
     # adding the three attributes to plot_df
 
-    plot_df = plot_df.assign(neighbor_conn = plot_df.apply(avg_neighbors_degree, axis=1))
-    plot_df = plot_df.assign(clustering_coeff = plot_df.user_id.map(nx.clustering(graph, plot_df.user_id)))
+    plot_df = plot_df.assign(neighbor_conn = plot_df.user_id.map(nx.average_neighbor_degree(graph)))
+    logging.info("neighbor connectivity added")
+    plot_df = plot_df.assign(clustering_coeff = plot_df.user_id.map(nx.clustering(graph)))
+    logging.info("clustering coefficient added")
     plot_df = plot_df.assign(embeddedness = plot_df.apply(embeddedness, axis=1))
+    logging.info("embeddedness info added")
     
     return plot_df
 
@@ -77,17 +74,20 @@ def plot_graph_features(graph, feature):
     it returs plots. 
     :param feature str: possible values are:
     * degree --> returns the degree distribution of the graph on a log-log plot
+    * agedist --> returns a distribution plot for ages in 5-year bins.
     * descriptive --> returns a plot with 4 subplots, namely: age~degree, 
     age~neighbor connectivity, age~triadic_closure, age~embeddedness.
     '''
 
-    # TODO add logging module, print status of function by tqdm. 
+    # TODO combine df creation into a single function and make the df as the input
+    # of this function instead of the graph and calling df creation inside.
+    # TODO add layout feature to avoid overlapping in 4 subplots
+    # TODO correct distplaying figures -- hide twice showings.
     # getting plot_df
     plot_df = creating_plot_df(graph)
 
     if feature == 'degree':
         #plotting degree distribution on a log-log plot
-
         fig, ax = plt.subplots(figsize=(8,5))
 
         ax.scatter(x=np.log(plot_df.degree.value_counts().index), y=np.log(plot_df.degree.value_counts()), marker = 'x', color='b')
@@ -97,6 +97,19 @@ def plot_graph_features(graph, feature):
         ax.set_title('Degree distribution on a log-log scale', size=18)
         ax.tick_params(labelsize=12)
         
+        return fig
+
+    elif feature == 'agedist':
+
+        fig, ax = plt.subplots(figsize=(8,5))
+
+        sns.histplot(data=plot_df[['age', 'gender']], x='age', hue='gender', bins=np.arange(0, 45, 5) + 15,  ax=ax)
+        ax.legend(plot_df.gender.replace({0:'female', 1:'male'}), fontsize=12)
+        # setting design
+        ax.set_ylabel('Count', size=14)
+        ax.set_xlabel('age', size=14)
+        ax.set_title('Age distribution for men and women', size=18)
+
         return fig
 
     elif feature == 'descriptive':
@@ -123,3 +136,40 @@ def plot_graph_features(graph, feature):
             axes.reshape(-1)[i].legend(set(grouped_df.gender.replace({0:'female', 1:'male'})), fontsize=12)
 
         return fig
+
+
+def plot_heatmap_demog_dist(nodes, edgelist):
+    '''
+    This function plots the demographic distribution of friends.
+    TODO update description
+    TODO make gender map global'''
+
+
+    # using edgelist and joining relevant data on it
+    edgelist_extended = edgelist.join(nodes.set_index('user_id'), on='source').rename(columns={'age': 'age_1', 'gender': 'gender_1'})
+    edgelist_extended = edgelist_extended.join(nodes.set_index('user_id'), on='target').rename(columns={'age': 'age_2', 'gender': 'gender_2'})
+
+    # setting male's age to negative
+    edgelist_v2 = edgelist_extended.copy(deep=True)
+    edgelist_v2.update(edgelist_v2[edgelist_v2.gender_2 ==1].age_2.apply(lambda x: -x))
+    
+    # creating plot
+    fig, axes = plt.subplots(1, 2, figsize=(16,8))
+    gender_map = {0:'female', 1:'male'}
+
+    for i, gender in enumerate(gender_map.keys()):
+        # filtering for the given gender
+        df = edgelist_v2[edgelist_v2.gender_1 ==gender]
+        # creating gouped dataframe with counts of relations
+        grouped_df = df.groupby(['age_1', 'gender_1', 'age_2', 'gender_2']).count()
+        # creating pivot table from grouped df to show the ages on the two axes,
+        # the count is the vaule.
+        pivot_1 = grouped_df.pivot_table(index="age_2", columns="age_1", values="source").fillna(0)
+        # normalizing pivot table by sums in columns
+        pivot_2 = pivot_1.apply(lambda x: x/x.sum())
+        # plotting
+        sns.heatmap(pivot_2, ax=axes[i], cmap='Spectral_r')
+        axes[i].invert_yaxis()
+        axes[i].set_ylabel('Demographic distribution of friends', size=14)
+        axes[i].set_xlabel(f'age ({gender_map[gender])}', size=14)
+        fig.suptitle('Age distribution of friends among men and women', size = 18)

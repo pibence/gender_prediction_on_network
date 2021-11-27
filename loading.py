@@ -1,36 +1,7 @@
 import pandas as pd
+import numpy as np
 
-
-def preparing_edges(path):
-    '''
-    This function reads the file containing the edges and makes them
-    unweighted.
-    '''
-
-    # Reading txt file with relations data
-    relations = pd.read_csv(path, sep='\t', header=None, names=['source', 'target'])
-    
-    # changing column order, merging together with original edgelist, filtering
-    # the ones that are existing in the new table twice, meaning there are
-    # directed edges from both nodes to the other.
-    relations_reverse = relations[['target', 'source']]
-    relations_reverse.columns = ['source', 'target']
-    merged = pd.concat([relations, relations_reverse])
-
-    edges = merged.groupby(['source', 'target']).size().reset_index()
-    edges.rename(columns={0: 'count'}, inplace=True)
-    res = edges[edges['count'] >1]
-    
-    # dropping count column
-    res = res.drop('count', axis=1)
-    return res
-
-def preparing_nodes(path):
-    '''
-    This function is preparing the nodes from the file on the given path.
-    '''
-
-    profile_columns = ['user_id',
+PROFILE_COLUMS = ['user_id',
 'public',
 'completion_percentage',
 'gender',
@@ -91,10 +62,53 @@ def preparing_nodes(path):
 'more',
 'extra']
 
-    profiles = pd.read_csv(path, sep='\t', header=None, names=profile_columns, usecols=['user_id', 'public', 'completion_percentage', 'gender', 'age'], index_col=None)
+def preparing_edges(path):
+    '''
+    This function reads the file containing the edges and makes them
+    unweighted. It returns an edgelist for nodes that both had directed
+    edges towards each other.
+    '''
 
-    # removing empty and not public profiles, dropping the columns
-    profiles = profiles[(profiles.completion_percentage != 0) & (profiles.public == 1)]
+    # Reading txt file with relations data
+    relations = pd.read_csv(path, sep='\t', header=None, names=['source', 'target'])
+    
+    # changing column order, merging together with original edgelist, filtering
+    # the ones that are existing in the new table twice, meaning there are
+    # directed edges from both nodes to the other.
+    relations_reverse = relations[['target', 'source']]
+    relations_reverse.columns = ['source', 'target']
+    merged = pd.concat([relations, relations_reverse])
+
+    edges = merged.groupby(['source', 'target']).size().reset_index()
+    edges.rename(columns={0: 'count'}, inplace=True)
+    res = edges[edges['count'] >1]
+    
+    # dropping count column
+    res = res.drop('count', axis=1)
+    return res
+
+def preparing_relevant_nodes(path):
+    '''
+    This function is preparing the nodes from the file on the given path.
+    It returns the a dataframe with info (gender, age). 
+    Selection criteria:
+    * completion status not null
+    * is public
+    * age is above 14
+    * gender is specified.
+    '''
+
+    # reading data from the given path
+    profiles = pd.read_csv(path, sep='\t', header=None, names=PROFILE_COLUMS, usecols=['user_id', 'public', 'completion_percentage', 'gender', 'age'], index_col=None)
+
+    # creating selection criteria
+    c_public = profiles.public == 1
+    c_completion = profiles.completion_percentage != 0
+    c_age = profiles.age > 14
+    c_gender = profiles.gender.isin([0, 1])
+
+    # applying the criteria
+    profiles = profiles[c_public & c_completion & c_age & c_gender]
     profiles.drop(['public', 'completion_percentage'], axis=1, inplace=True)
 
     return(profiles)
@@ -104,26 +118,29 @@ def load_data(edgelist_path, node_path):
     '''
     This function calls the above defined loading functions and returns
     the edgelist and public nodes as a tuple of dataframes. It also prints
-    relevant info on the reduced graph.
+    relevant info on the reduced graph. In order the function to work, the 
+    data should be unzipped before giving it to the function as the path.
     '''
 
+    # TODO separate a part of the dataframe for out of sample, some part for testing
     # reading file with edgelist data
     edgelist = preparing_edges(edgelist_path)
-    
-    # getting nodes that are in the reduced edgelist
-    nodes_with_edges = set(edgelist.source).intersection(set(edgelist.target))
-    
-    # reading file with node data, filtering for relevant nodes
-    nodes_total = preparing_nodes(node_path)
 
+    # reading file with public node data, filtering for relevant nodes
+    nodes_total = preparing_relevant_nodes(node_path)
+
+    # filtering edgelist for public nodes only
+    edgelist_public = edgelist[edgelist.source.isin(nodes_total.user_id) & edgelist.target.isin(nodes_total.user_id)]
+
+    # getting nodes that are in the reduced edgelist
+    nodes_with_edges = set(edgelist_public.source).union(set(edgelist_public.target))
+
+    # filtering nodes dataframe for selected nodes
     nodes = nodes_total[nodes_total.user_id.isin(nodes_with_edges)]
 
     # printing desricptive information on the graph
     print(f"Number of nodes in the graph: {len(nodes)}\n\
-Number of edges in the graph: {len(edgelist)}")
+Number of edges in the graph: {len(edgelist_public)}")
 
-    return nodes, edgelist
-
-    
-    # filtering for nodes that are in the edgelist
+    return nodes, edgelist_public
     
