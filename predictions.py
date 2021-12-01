@@ -87,7 +87,8 @@ def ceating_dataframe_for_prediction(graph:nx.Graph, graph_nodes:pd.DataFrame, u
     a dataframe with four columns: the gender, the proportion of MM, MF, FF
     pairs in the triangles that contain the given user. The train df can contain
     the test nodes as well but without the age, in this case the returned record
-    contains np.nan for the gender. 
+    contains np.nan for the gender.
+    TODO: remove [0:10000] limit, run again on the whole dataset
     '''
 
     if isinstance(user_ids_df, type(None)):
