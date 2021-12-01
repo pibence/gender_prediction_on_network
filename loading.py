@@ -122,7 +122,6 @@ def load_data(edgelist_path, node_path):
     data should be unzipped before giving it to the function as the path.
     '''
 
-    # TODO separate a part of the dataframe for out of sample, some part for testing
     # reading file with edgelist data
     edgelist = preparing_edges(edgelist_path)
 
@@ -155,3 +154,18 @@ def load_data_from_csv(edgelist_path, node_path):
 Number of edges in the graph: {len(edgelist)}")
 
     return nodes, edgelist
+
+
+def filter_edgelist_and_nodes(nodes:pd.DataFrame, edgelist:pd.DataFrame):
+    
+    # filtering edgelist
+    edgelist_filt = edgelist[edgelist.source.isin(nodes.user_id) & \
+    edgelist.target.isin(nodes.user_id)]
+
+    # getting nodes that are in the reduced edgelist
+    nodes_with_edges = set(edgelist_filt.source).union(set(edgelist_filt.target))
+    
+    # filtering nodes dataframe for selected nodes
+    nodes_return = nodes[nodes.user_id.isin(nodes_with_edges)]
+
+    return nodes_return, edgelist_filt

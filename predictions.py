@@ -3,6 +3,7 @@ import numpy as np
 import random
 from tqdm import tqdm
 import networkx as nx
+from sklearn.metrics import accuracy_score, confusion_matrix
 
 # setting seed to always get back the same train-test split
 random.seed(10)
@@ -89,6 +90,9 @@ def ceating_dataframe_for_prediction(graph:nx.Graph, graph_nodes:pd.DataFrame, u
     contains np.nan for the gender. 
     '''
 
+    if isinstance(user_ids_df, type(None)):
+        user_ids_df = graph_nodes
+
     # finding triangles in the graph
     cliques = nx.find_cliques(graph)
     triad_list = [clique for clique in cliques if len(clique)==3]
@@ -97,12 +101,11 @@ def ceating_dataframe_for_prediction(graph:nx.Graph, graph_nodes:pd.DataFrame, u
     mm = []
     mf = []
     ff = []
-    if not user_ids_df:
-        user_ids_df = graph_nodes
+    
     # iterating through the user_ids given to the function
     # The value for all mm, mf, ff is 0 if there are no triads containing the 
     # given node. Triads with missing gender value are eliminated.
-    for id in tqdm(user_ids_df.user_id[0:1000]):
+    for id in tqdm(user_ids_df.user_id[0:10000]):
 
         # Listing triads that contain the given node
         triads_id = [triad for triad in triad_list if id in triad]
@@ -136,9 +139,20 @@ def ceating_dataframe_for_prediction(graph:nx.Graph, graph_nodes:pd.DataFrame, u
         ff.append(res.count(0)/length)
 
     regression_df = pd.DataFrame(dict(
-        gender = user_ids_df.gender[0:1000],
+        gender = user_ids_df.gender[0:10000],
         mm = mm,
         mf = mf,
         ff = ff))
 
     return regression_df
+
+
+def check_accuracy(y_test, y_pred):
+    '''
+    This function returns the confusion matrix and the accuracy score of
+    the two given arrays.
+    '''
+    conf_matrix = confusion_matrix(y_test, y_pred)
+    acc_score = accuracy_score(y_test, y_pred)
+
+    print(f"Confusion matrix:\n{conf_matrix}\n\nThe accuracy score is {acc_score}")
