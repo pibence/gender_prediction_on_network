@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tkr
+import matplotlib.colors as colors
 import seaborn as sns
 import pandas as pd
 import numpy as np
@@ -190,12 +191,13 @@ def plot_heatmap_demog_dist(nodes:pd.DataFrame, edgelist:pd.DataFrame):
     fig.suptitle('Age distribution of friends among men and women', size = 18)
 
         
-def plot_heatmap_pair_dist(nodes:pd.DataFrame, edgelist:pd.DataFrame):
+def plot_heatmap_pair_dist(nodes:pd.DataFrame, edgelist:pd.DataFrame, log=False):
     '''
     This function takes the nodes and edgelist as input and creates four 
     subplots about number of friendships between the ages. One for total
     one for M-M, one for F-F and one for M-F pairs The heatmap contains the
-    actual number of pairs.
+    actual number of pairs. If log is set True, the plot shows the logarithm
+    (10-base) of the values.
     '''
 
     # using edgelist and joining relevant data on it
@@ -226,15 +228,25 @@ def plot_heatmap_pair_dist(nodes:pd.DataFrame, edgelist:pd.DataFrame):
         pivot = grouped_df.pivot_table(index="age_2", columns="age_1", values="source", aggfunc=np.sum) \
         .fillna(0)
         # plotting
-        sns.heatmap(pivot, ax=axes.reshape(-1)[i], cmap='Spectral_r', cbar_kws={'format':formatter})
+        if log:
+            sns.heatmap(pivot, ax=axes.reshape(-1)[i], cmap='Spectral_r', \
+            norm=colors.LogNorm(), cbar_kws={'format':formatter})
+            axes.reshape(-1)[i].set_title(f'log # connections per {filter[0]} pairs', size=18)
+        else:
+            sns.heatmap(pivot, ax=axes.reshape(-1)[i], cmap='Spectral_r', \
+            cbar_kws={'format':formatter})
+            axes.reshape(-1)[i].set_title(f'# connections per {filter[0]} pairs', size=18)
         # setting design
         axes.reshape(-1)[i].invert_yaxis()
         axes.reshape(-1)[i].set_ylabel('Age', size=14)
         axes.reshape(-1)[i].set_xlabel('Age', size=14)
         axes.reshape(-1)[i].tick_params(labelsize=12)
-        axes.reshape(-1)[i].set_title(f'# connections per {filter[0]} pairs', size=18)
+        
     
-    fig.suptitle('# connections per given pairs\nx-axis corresponds to the first element of pair', size=22)
+    if log:   
+        fig.suptitle('Log # connections per given pairs\nx-axis corresponds to the first element of pair', size=22)
+    else:
+        fig.suptitle('# connections per given pairs\nx-axis corresponds to the first element of pair', size=22)
     fig.tight_layout()
 
 
@@ -385,11 +397,12 @@ def create_triad_df(graph:nx.Graph) -> pd.DataFrame:
     return plot_df
 
 
-def plot_triad_heatmap(graph:nx.Graph):
+def plot_triad_heatmap(graph:nx.Graph, log=False):
     '''
     This function's objective to create a (2,2) heatmap from triads in the graph
     with minumun age on the x axis, maximum age on the y axis. Four subplots are
     created based on the composition of the triad (FFF, MFF, MMF, MMM).
+    If log=True, the logarithm (10-base) of the occurances is plotted.
     '''
     # TODO rewrite triad listing to make it faster.
     # TODO outsource formatter function.
@@ -419,7 +432,12 @@ def plot_triad_heatmap(graph:nx.Graph):
         values='sum_gender', aggfunc=np.sum).fillna(0)
 
         # visualizing the pivoted dataframe on a heatmap
-        sns.heatmap(pivot_df, ax=axes.reshape(-1)[i], cmap='Spectral_r', cbar_kws={'format':formatter})
+        if log:
+            sns.heatmap(pivot_df, ax=axes.reshape(-1)[i], cmap='Spectral_r', \
+            norm=colors.LogNorm(), cbar_kws={'format':formatter})
+        else:
+            sns.heatmap(pivot_df, ax=axes.reshape(-1)[i], cmap='Spectral_r', \
+            cbar_kws={'format':formatter})
     
         # setting design
         axes.reshape(-1)[i].set_ylabel(f'Max age of {triad_info[triad]}', size=16)
